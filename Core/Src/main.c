@@ -34,7 +34,8 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
-#define SENSOR_BUS hi2c1
+//#define SENSOR_BUS hi2c1
+#define SENSOR_BUS hspi1
 
 #define BOOT_TIME 10
 #define FIFO_WATERMARK 32
@@ -57,6 +58,8 @@ DMA_HandleTypeDef hdma_usart2_tx;
 static uint8_t whoamI;
 //static uint8_t tx_buffer[1000];
 static lsm6dsv_fifo_sflp_raw_t fifo_sflp;
+
+static HAL_StatusTypeDef spi_status;
 
 /* USER CODE END PV */
 
@@ -117,15 +120,20 @@ int main(void)
     HAL_GPIO_WritePin(UART_DE_GPIO_Port, UART_DE_Pin, 0);
     HAL_GPIO_WritePin(SPI_CS_GPIO_Port, SPI_CS_Pin, 1); //CS high means I2c activated
 
-    while(1){
-        uint8_t buf[4] = {0};
-        HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, 0);
-        // HAL_I2C_Master_Transmit(&hi2c1, LSM6DSV_I2C_ADD_L, buf, 1, 10);
-        HAL_Delay(10);
-        HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, 1);
-        HAL_Delay(10);
-        // HAL_I2C_Mem_Read(handle, LSM6DSV_I2C_ADD_L, reg, I2C_MEMADD_SIZE_8BIT, bufp, len, 1000);
-    }
+    // while(1){
+    //     uint8_t buf[40] = {1};
+    //     HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, 0);
+
+    //     HAL_GPIO_WritePin(SPI_CS_GPIO_Port, SPI_CS_Pin, 0); //CS high means I2c activated
+    //     HAL_SPI_Transmit(&hspi1, buf, 40, 1);
+    //     HAL_GPIO_WritePin(SPI_CS_GPIO_Port, SPI_CS_Pin, 1); //CS high means I2c activated
+
+    //     // HAL_I2C_Master_Transmit(&hi2c1, LSM6DSV_I2C_ADD_L, buf, 1, 10);
+    //     HAL_Delay(10);
+    //     HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, 1);
+    //     HAL_Delay(10);
+    //     // HAL_I2C_Mem_Read(handle, LSM6DSV_I2C_ADD_L, reg, I2C_MEMADD_SIZE_8BIT, bufp, len, 1000);
+    // }
 
 
     lsm6dsv_fifo_status_t fifo_status;
@@ -148,6 +156,7 @@ int main(void)
 
     /* Check device ID */
 
+    lsm6dsv_device_id_get(&dev_ctx, &whoamI);
     while (whoamI != LSM6DSV_ID){
     	lsm6dsv_device_id_get(&dev_ctx, &whoamI);
     	HAL_Delay(10);
@@ -259,6 +268,11 @@ int main(void)
 
             // sprintf((char *)tx_buffer, "------ \r\n\r\n");
             // tx_com(tx_buffer, strlen((char const *)tx_buffer));
+            if(spi_status == HAL_OK){
+            	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, 1);
+            }else{
+            	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, 0);
+            }
         }
     }
   /* USER CODE END 3 */
@@ -334,10 +348,10 @@ static void MX_SPI1_Init(void)
   hspi1.Init.Mode = SPI_MODE_MASTER;
   hspi1.Init.Direction = SPI_DIRECTION_2LINES;
   hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
-  hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
-  hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi1.Init.CLKPolarity = SPI_POLARITY_HIGH;
+  hspi1.Init.CLKPhase = SPI_PHASE_2EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_32;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -463,13 +477,16 @@ static void MX_GPIO_Init(void)
 
 static int32_t platform_write(void *handle, uint8_t reg, const uint8_t *bufp, uint16_t len) {
     // I2C version
-    HAL_I2C_Mem_Write(handle, LSM6DSV_I2C_ADD_L, reg, I2C_MEMADD_SIZE_8BIT, (uint8_t *)bufp, len, 1000);
+    // HAL_I2C_Mem_Write(handle, LSM6DSV_I2C_ADD_L, reg, I2C_MEMADD_SIZE_8BIT, (uint8_t *)bufp, len, 1000);
 
     // SPI version
-    // HAL_GPIO_WritePin(CS_up_GPIO_Port, CS_up_Pin, GPIO_PIN_RESET);
-    // HAL_SPI_Transmit(handle, &reg, 1, 1000);
-    // HAL_SPI_Transmit(handle, (uint8_t *)bufp, len, 1000);
-    // HAL_GPIO_WritePin(CS_up_GPIO_Port, CS_up_Pin, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(SPI_CS_GPIO_Port, SPI_CS_Pin, 0);
+
+    spi_status = HAL_SPI_Transmit(handle, &reg, 1, 1000);
+
+    spi_status = HAL_SPI_Transmit(handle, (uint8_t *)bufp, len, 1000);
+
+    HAL_GPIO_WritePin(SPI_CS_GPIO_Port, SPI_CS_Pin, 1);
     return 0;
 }
 
@@ -485,14 +502,15 @@ static int32_t platform_write(void *handle, uint8_t reg, const uint8_t *bufp, ui
  */
 static int32_t platform_read(void *handle, uint8_t reg, uint8_t *bufp, uint16_t len) {
     // I2C version
-    HAL_I2C_Mem_Read(handle, LSM6DSV_I2C_ADD_L, reg, I2C_MEMADD_SIZE_8BIT, bufp, len, 1000);
+    // HAL_I2C_Mem_Read(handle, LSM6DSV_I2C_ADD_L, reg, I2C_MEMADD_SIZE_8BIT, bufp, len, 1000);
 
     // SPI version
-    // reg |= 0x80;
-    // HAL_GPIO_WritePin(CS_up_GPIO_Port, CS_up_Pin, GPIO_PIN_RESET);
-    // HAL_SPI_Transmit(handle, &reg, 1, 1000);
-    // HAL_SPI_Receive(handle, bufp, len, 1000);
-    // HAL_GPIO_WritePin(CS_up_GPIO_Port, CS_up_Pin, GPIO_PIN_SET);
+    reg |= 0x80;
+    HAL_GPIO_WritePin(SPI_CS_GPIO_Port, SPI_CS_Pin, GPIO_PIN_RESET);
+    spi_status = HAL_SPI_Transmit(handle, &reg, 1, 1000);
+
+    spi_status = HAL_SPI_Receive(handle, bufp, len, 1000);
+    HAL_GPIO_WritePin(SPI_CS_GPIO_Port, SPI_CS_Pin, GPIO_PIN_SET);
 
     return 0;
 }
