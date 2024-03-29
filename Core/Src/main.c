@@ -224,33 +224,22 @@ int main(void) {
             // HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, data_raw_angular_rate[0]);
         }
 
-        if (uart_received_flag) {
-            uart_received_flag = 0;
+        uart_TX[0] = (uint8_t)(data_raw_acceleration[0] >> (7)) & 0b01111111;
+		 uart_TX[1] = (uint8_t)(data_raw_acceleration[0] >> (0)) & 0b01111111;
+		 uart_TX[2] = (uint8_t)(data_raw_acceleration[1] >> (7)) & 0b01111111;
+		 uart_TX[3] = (uint8_t)(data_raw_acceleration[1] >> (0)) & 0b01111111;
+		 uart_TX[4] = (uint8_t)(data_raw_acceleration[2] >> (7)) & 0b01111111;
+		 uart_TX[5] = (uint8_t)(data_raw_acceleration[2] >> (0)) & 0b01111111;
+		 uart_TX[6] = (uint8_t)(data_raw_angular_rate[0] >> (7)) & 0b01111111;
+		 uart_TX[7] = (uint8_t)(data_raw_angular_rate[0] >> (0)) & 0b01111111;
+		 uart_TX[8] = (uint8_t)(data_raw_angular_rate[1] >> (7)) & 0b01111111;
+		 uart_TX[9] = (uint8_t)(data_raw_angular_rate[1] >> (0)) & 0b01111111;
+		 uart_TX[10] = (uint8_t)(data_raw_angular_rate[2] >> (7)) & 0b01111111;
+		 uart_TX[11] = (uint8_t)(data_raw_angular_rate[2] >> (0)) & 0b01111111;
 
-            uart_cmd[0] = uart_RX[0] & CMD_MASK;
-            uart_cmd[1] = (uart_RX[1] << 7) | (uart_RX[2]);
-            uart_cmd[1] = pad14(uart_cmd[1]);
 
-            uart_TX[0] = (uint8_t)(data_raw_acceleration[0] >> (7)) & 0b01111111;
-            uart_TX[1] = (uint8_t)(data_raw_acceleration[0] >> (0)) & 0b01111111;
-            uart_TX[2] = (uint8_t)(data_raw_acceleration[1] >> (7)) & 0b01111111;
-            uart_TX[3] = (uint8_t)(data_raw_acceleration[1] >> (0)) & 0b01111111;
-            uart_TX[4] = (uint8_t)(data_raw_acceleration[2] >> (7)) & 0b01111111;
-            uart_TX[5] = (uint8_t)(data_raw_acceleration[2] >> (0)) & 0b01111111;
-            uart_TX[6] = (uint8_t)(data_raw_angular_rate[0] >> (7)) & 0b01111111;
-            uart_TX[7] = (uint8_t)(data_raw_angular_rate[0] >> (0)) & 0b01111111;
-            uart_TX[8] = (uint8_t)(data_raw_angular_rate[1] >> (7)) & 0b01111111;
-            uart_TX[9] = (uint8_t)(data_raw_angular_rate[1] >> (0)) & 0b01111111;
-            uart_TX[10] = (uint8_t)(data_raw_angular_rate[2] >> (7)) & 0b01111111;
-            uart_TX[11] = (uint8_t)(data_raw_angular_rate[2] >> (0)) & 0b01111111;
 
-            HAL_GPIO_WritePin(UART_DE_GPIO_Port, UART_DE_Pin, 1); // enable TX
-            HAL_UART_Transmit_DMA(&huart2, uart_TX, 12);
 
-            HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, 0);
-        }else{
-            HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, 1);
-        }
 
     }
     /* USER CODE END 3 */
@@ -323,7 +312,7 @@ static void MX_SPI1_Init(void) {
     hspi1.Init.CLKPolarity = SPI_POLARITY_HIGH;
     hspi1.Init.CLKPhase = SPI_PHASE_2EDGE;
     hspi1.Init.NSS = SPI_NSS_SOFT;
-    hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_32;
+    hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;
     hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
     hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
     hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -507,7 +496,28 @@ static void platform_init() {
 
 
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size) {
-    uart_received_flag = 1; // commutation loop will read and clear
+    uart_received_flag = 1;
+
+    if (uart_received_flag) { //was in main loop before
+		uart_received_flag = 0;
+
+		uart_cmd[0] = uart_RX[0] & CMD_MASK;
+		uart_cmd[1] = (uart_RX[1] << 7) | (uart_RX[2]);
+		uart_cmd[1] = pad14(uart_cmd[1]);
+
+		if (uart_cmd[0] == CMD_GET_POSITION) {
+
+			HAL_GPIO_WritePin(UART_DE_GPIO_Port, UART_DE_Pin, 1); // enable TX
+			HAL_UART_Transmit_DMA(&huart2, uart_TX, 12);
+		}else{
+			HAL_GPIO_WritePin(UART_DE_GPIO_Port, UART_DE_Pin, 0); // set RX
+			HAL_UARTEx_ReceiveToIdle_IT(&huart2, uart_RX, UART_RX_SIZE);
+		}
+
+		HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, 0);
+	}else{
+		HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, 1);
+	}
 }
 
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
